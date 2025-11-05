@@ -23,6 +23,7 @@ from batch_experiments import (
     BatchExperimentRunner, AutomatedReportGenerator, create_batch_template
 )
 from agent_architectures import AgentArchitectureManager
+from rl_agent import RLCoordinationSimulation, QLearningStrategy
 import json
 import time
 
@@ -47,14 +48,19 @@ if 'batch_runner' not in st.session_state:
     st.session_state.batch_runner = BatchExperimentRunner()
 if 'batch_results' not in st.session_state:
     st.session_state.batch_results = None
+if 'rl_sim' not in st.session_state:
+    st.session_state.rl_sim = None
+if 'rl_training_history' not in st.session_state:
+    st.session_state.rl_training_history = []
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🎮 Interactive Simulation", 
     "📊 Bandwidth Analysis", 
     "🔬 Causal Testing",
     "📈 Analytics Dashboard",
     "🧠 Behavior Analysis",
     "🔄 Batch Experiments",
+    "🤖 Q-Learning",
     "💾 Export Data"
 ])
 
@@ -927,6 +933,184 @@ with tab6:
             st.info("Configure and run experiments to see results")
 
 with tab7:
+    st.header("Q-Learning Adaptive Agents")
+    st.markdown("Train agents to learn optimal strategies using reinforcement learning")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("Training Configuration")
+        
+        rl_num_agents = st.slider("Number of Agents", 2, 8, 4, key='rl_agents')
+        rl_num_food = st.slider("Food Items", 5, 20, 10, key='rl_food')
+        rl_num_dangers = st.slider("Danger Items", 2, 10, 5, key='rl_dangers')
+        rl_vision = st.slider("Vision Radius", 1, 5, 3, key='rl_vision')
+        
+        st.divider()
+        st.subheader("Learning Parameters")
+        
+        alpha = st.slider("Learning Rate (α)", 0.01, 0.5, 0.1, 0.01, key='rl_alpha')
+        gamma = st.slider("Discount Factor (γ)", 0.5, 0.99, 0.9, 0.01, key='rl_gamma')
+        epsilon = st.slider("Exploration Rate (ε)", 0.05, 0.5, 0.2, 0.05, key='rl_epsilon')
+        
+        st.info(f"""
+        - **α={alpha}**: How quickly agents learn from new experiences
+        - **γ={gamma}**: How much agents value future rewards
+        - **ε={epsilon}**: Balance between exploration and exploitation
+        """)
+        
+        st.divider()
+        
+        if st.button("🎯 Initialize RL Environment", use_container_width=True):
+            rl_sim = RLCoordinationSimulation(
+                world_size=15,
+                num_agents=rl_num_agents,
+                num_food=rl_num_food,
+                num_dangers=rl_num_dangers,
+                vision_radius=rl_vision,
+                alpha=alpha,
+                gamma=gamma,
+                epsilon=epsilon
+            )
+            st.session_state.rl_sim = rl_sim
+            st.session_state.rl_training_history = []
+            st.success("RL environment initialized!")
+        
+        st.divider()
+        
+        if st.session_state.rl_sim:
+            num_episodes = st.slider("Training Episodes", 1, 100, 10, key='rl_episodes')
+            
+            if st.button("🚀 Train Agents", use_container_width=True, type="primary"):
+                with st.spinner(f"Training for {num_episodes} episodes..."):
+                    progress_bar = st.progress(0)
+                    
+                    for ep in range(num_episodes):
+                        stats = st.session_state.rl_sim.run_episode(num_steps=50)
+                        st.session_state.rl_training_history.append(stats)
+                        progress_bar.progress((ep + 1) / num_episodes)
+                
+                st.success(f"Training complete! {num_episodes} episodes")
+                st.rerun()
+            
+            if st.button("🔄 Reset Training"):
+                st.session_state.rl_training_history = []
+                st.session_state.rl_sim = None
+                st.rerun()
+    
+    with col2:
+        if st.session_state.rl_training_history:
+            st.subheader("Learning Progress")
+            
+            history = st.session_state.rl_training_history
+            episodes = list(range(1, len(history) + 1))
+            
+            food_collected = [h['total_food'] for h in history]
+            dangers_hit = [h['total_dangers'] for h in history]
+            
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+            
+            fig = make_subplots(
+                rows=2, cols=2,
+                subplot_titles=('Food Collected per Episode', 'Dangers Hit per Episode',
+                               'Average Q-Values', 'Total Rewards per Agent')
+            )
+            
+            fig.add_trace(
+                go.Scatter(x=episodes, y=food_collected, mode='lines+markers',
+                          name='Food', line=dict(color='#2ecc71')),
+                row=1, col=1
+            )
+            
+            fig.add_trace(
+                go.Scatter(x=episodes, y=dangers_hit, mode='lines+markers',
+                          name='Dangers', line=dict(color='#e74c3c')),
+                row=1, col=2
+            )
+            
+            avg_q_values = []
+            for h in history:
+                if h['final_q_values']:
+                    avg_q_values.append(np.mean(h['final_q_values']))
+                else:
+                    avg_q_values.append(0)
+            
+            fig.add_trace(
+                go.Scatter(x=episodes, y=avg_q_values, mode='lines+markers',
+                          name='Avg Q', line=dict(color='#3498db')),
+                row=2, col=1
+            )
+            
+            if history[-1]['agent_rewards']:
+                agent_indices = list(range(len(history[-1]['agent_rewards'])))
+                fig.add_trace(
+                    go.Bar(x=agent_indices, y=history[-1]['agent_rewards'],
+                          name='Rewards', marker_color='#9b59b6'),
+                    row=2, col=2
+                )
+            
+            fig.update_layout(
+                height=600,
+                showlegend=False,
+                template='plotly_white'
+            )
+            
+            fig.update_xaxes(title_text="Episode", row=1, col=1)
+            fig.update_xaxes(title_text="Episode", row=1, col=2)
+            fig.update_xaxes(title_text="Episode", row=2, col=1)
+            fig.update_xaxes(title_text="Agent ID", row=2, col=2)
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.divider()
+            st.subheader("Performance Metrics")
+            
+            recent_episodes = history[-10:] if len(history) > 10 else history
+            
+            col_m1, col_m2, col_m3 = st.columns(3)
+            
+            with col_m1:
+                avg_food = np.mean([h['total_food'] for h in recent_episodes])
+                st.metric("Avg Food (last 10)", f"{avg_food:.1f}")
+            
+            with col_m2:
+                avg_dangers = np.mean([h['total_dangers'] for h in recent_episodes])
+                st.metric("Avg Dangers (last 10)", f"{avg_dangers:.1f}")
+            
+            with col_m3:
+                if st.session_state.rl_sim:
+                    agent_stats = st.session_state.rl_sim.get_all_agent_stats()
+                    avg_epsilon = np.mean([s['epsilon'] for s in agent_stats])
+                    st.metric("Current ε", f"{avg_epsilon:.3f}")
+            
+            st.divider()
+            st.subheader("Agent Learning Statistics")
+            
+            if st.session_state.rl_sim:
+                agent_stats = st.session_state.rl_sim.get_all_agent_stats()
+                
+                stats_data = []
+                for i, stats in enumerate(agent_stats):
+                    stats_data.append({
+                        'Agent': f"Agent {i}",
+                        'Total Reward': f"{stats['total_reward']:.1f}",
+                        'Avg Q-Value': f"{stats['avg_q_value']:.3f}",
+                        'States Explored': stats['states_explored'],
+                        'ε': f"{stats['epsilon']:.3f}"
+                    })
+                
+                import pandas as pd
+                df_stats = pd.DataFrame(stats_data)
+                st.dataframe(df_stats, use_container_width=True, hide_index=True)
+        
+        elif st.session_state.rl_sim:
+            st.info("Initialize and train agents to see learning progress")
+        
+        else:
+            st.info("Initialize RL environment to begin training")
+
+with tab8:
     st.header("Export Data")
     
     col1, col2 = st.columns(2)
