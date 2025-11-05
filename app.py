@@ -22,6 +22,7 @@ from statistical_analysis import (
 from batch_experiments import (
     BatchExperimentRunner, AutomatedReportGenerator, create_batch_template
 )
+from agent_architectures import AgentArchitectureManager
 import json
 import time
 
@@ -78,6 +79,22 @@ with tab1:
         
         st.divider()
         
+        st.subheader("Agent Strategy")
+        
+        available_strategies = AgentArchitectureManager.get_available_strategies()
+        strategy_descriptions = AgentArchitectureManager.get_strategy_descriptions()
+        
+        agent_strategy = st.selectbox(
+            "Strategy Type",
+            options=available_strategies,
+            format_func=lambda x: x.capitalize(),
+            key='agent_strategy_tab1'
+        )
+        
+        st.info(f"**{agent_strategy.capitalize()}:** {strategy_descriptions[agent_strategy]}")
+        
+        st.divider()
+        
         col_btn1, col_btn2 = st.columns(2)
         
         with col_btn1:
@@ -88,11 +105,12 @@ with tab1:
                     num_food=num_food,
                     num_dangers=num_dangers,
                     bandwidth_bits=bandwidth_bits,
-                    vision_radius=vision_radius
+                    vision_radius=vision_radius,
+                    agent_strategy=agent_strategy
                 )
                 env.initialize(seed=42)
                 st.session_state.current_env = env
-                st.success("Environment initialized!")
+                st.success(f"Environment initialized with {agent_strategy.capitalize()} agents!")
         
         with col_btn2:
             if st.button("▶️ Step", use_container_width=True, disabled=st.session_state.current_env is None):

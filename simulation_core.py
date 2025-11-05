@@ -2,11 +2,12 @@ import numpy as np
 from collections import deque
 import random
 from simulation_logger import SimulationLogger
+from agent_architectures import AgentArchitectureManager
 
 class CoordinationAgent:
-    """Enhanced agent with comprehensive logging capabilities"""
+    """Enhanced agent with comprehensive logging capabilities and strategy support"""
     
-    def __init__(self, agent_id, world_size=15, vision_radius=3, logger=None):
+    def __init__(self, agent_id, world_size=15, vision_radius=3, logger=None, strategy_name='balanced'):
         self.agent_id = agent_id
         self.world_size = world_size
         self.vision_radius = vision_radius
@@ -18,6 +19,9 @@ class CoordinationAgent:
         self.received_danger_warnings = []
         self.total_food_collected = 0
         self.total_dangers_hit = 0
+        
+        self.strategy = AgentArchitectureManager.create_strategy(strategy_name, agent_id, vision_radius)
+        self.strategy_name = strategy_name
     
     def generate_message(self, environment_state):
         """Generate messages about what agent can SEE"""
@@ -60,42 +64,37 @@ class CoordinationAgent:
         elif message['type'] == 'danger_warning':
             self.received_danger_warnings.append(message['position'])
     
-    def decide_movement(self):
-        """Make movement decision based on received messages"""
-        decision_basis = 'random'
+    def decide_movement(self, environment_state=None):
+        """Make movement decision using strategy"""
+        if environment_state is None:
+            decision_basis = 'random'
+            return random.choice([(0,1), (1,0), (0,-1), (-1,0)]), decision_basis
         
-        if self.received_danger_warnings:
-            decision_basis = 'avoid_danger'
-            nearest_danger = min(
-                self.received_danger_warnings,
-                key=lambda d: abs(d[0] - self.position[0]) + abs(d[1] - self.position[1])
-            )
-            
-            dx = self.position[0] - nearest_danger[0]
-            dy = self.position[1] - nearest_danger[1]
-            
-            if abs(dx) > abs(dy):
-                return (1 if dx > 0 else -1, 0), decision_basis
-            else:
-                return (0, 1 if dy > 0 else -1), decision_basis
+        messages = []
+        for alert in self.received_food_alerts:
+            messages.append({'type': 'food_found', 'position': alert})
+        for warning in self.received_danger_warnings:
+            messages.append({'type': 'danger_alert', 'position': warning})
         
-        if self.received_food_alerts:
-            decision_basis = 'seek_food'
-            nearest_food = min(
-                self.received_food_alerts,
-                key=lambda f: abs(f[0] - self.position[0]) + abs(f[1] - self.position[1])
-            )
-            
-            dx = nearest_food[0] - self.position[0]
-            dy = nearest_food[1] - self.position[1]
-            
-            if abs(dx) > abs(dy):
-                return (1 if dx > 0 else -1, 0), decision_basis
-            else:
-                return (0, 1 if dy > 0 else -1), decision_basis
+        state_dict = {
+            'agents': {self.agent_id: {'position': self.position}},
+            'food': environment_state.get('food_locations', []),
+            'dangers': environment_state.get('danger_locations', []),
+            'world_size': self.world_size
+        }
         
-        decision_basis = 'random'
-        return random.choice([(0,1), (1,0), (0,-1), (-1,0)]), decision_basis
+        action = self.strategy.decide_action(state_dict, messages)
+        
+        move_vector = action.get('move', [0, 0])
+        
+        if abs(move_vector[0]) > abs(move_vector[1]):
+            movement = (1 if move_vector[0] > 0 else -1, 0)
+        else:
+            movement = (0, 1 if move_vector[1] > 0 else -1)
+        
+        decision_basis = self.strategy.get_strategy_name()
+        
+        return movement, decision_basis
     
     def clear_messages(self):
         """Clear messages at start of new timestep"""
@@ -177,7 +176,7 @@ class SimulationEnvironment:
     """Enhanced simulation environment with logging"""
     
     def __init__(self, world_size=15, num_agents=8, num_food=10, num_dangers=5, 
-                 bandwidth_bits=1000, vision_radius=3, logger=None):
+                 bandwidth_bits=1000, vision_radius=3, logger=None, agent_strategy='balanced'):
         self.world_size = world_size
         self.num_agents = num_agents
         self.num_food = num_food
@@ -185,6 +184,7 @@ class SimulationEnvironment:
         self.bandwidth_bits = bandwidth_bits
         self.vision_radius = vision_radius
         self.logger = logger or SimulationLogger()
+        self.agent_strategy = agent_strategy
         
         self.agents = {}
         self.mac = None
@@ -203,7 +203,7 @@ class SimulationEnvironment:
         
         self.agents = {
             f"agent_{i}": CoordinationAgent(
-                f"agent_{i}", self.world_size, self.vision_radius, self.logger
+                f"agent_{i}", self.world_size, self.vision_radius, self.logger, self.agent_strategy
             ) for i in range(self.num_agents)
         }
         
@@ -232,7 +232,7 @@ class SimulationEnvironment:
         
         for agent_id, agent in self.agents.items():
             old_pos = agent.position
-            (dx, dy), decision_basis = agent.decide_movement()
+            (dx, dy), decision_basis = agent.decide_movement(env_state)
             
             new_x = max(0, min(self.world_size-1, agent.position[0] + dx))
             new_y = max(0, min(self.world_size-1, agent.position[1] + dy))
