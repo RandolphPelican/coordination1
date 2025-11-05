@@ -9,6 +9,11 @@ from analysis_tools import (
     run_bandwidth_sweep, detect_inverted_u_curve, run_causal_ablation_test,
     create_inverted_u_plot, create_phase_comparison_plot, create_grid_visualization
 )
+from advanced_visualizations import (
+    create_position_heatmap, create_trajectory_visualization, create_decision_heatmap,
+    create_agent_efficiency_comparison, create_message_flow_network,
+    create_coordination_timeline, create_exploration_coverage_map
+)
 import json
 import time
 
@@ -30,11 +35,12 @@ if 'bandwidth_results' not in st.session_state:
 if 'causal_results' not in st.session_state:
     st.session_state.causal_results = None
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎮 Interactive Simulation", 
     "📊 Bandwidth Analysis", 
     "🔬 Causal Testing",
     "📈 Analytics Dashboard",
+    "🧠 Behavior Analysis",
     "💾 Export Data"
 ])
 
@@ -503,6 +509,88 @@ with tab4:
         st.info("Run a simulation to see analytics")
 
 with tab5:
+    st.header("Behavior Analysis")
+    st.markdown("Advanced visualizations for understanding agent behavior patterns and coordination dynamics")
+    
+    if st.session_state.current_env and st.session_state.current_env.logger:
+        logger = st.session_state.current_env.logger
+        state = st.session_state.current_env.get_state()
+        world_size = state['world_size']
+        
+        if len(logger.agent_histories) == 0:
+            st.info("⏩ Run at least one simulation step to see behavior analysis visualizations")
+        else:
+            st.subheader("Spatial Analysis")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_heatmap = create_position_heatmap(logger, world_size)
+                if fig_heatmap:
+                    st.plotly_chart(fig_heatmap, use_container_width=True)
+                else:
+                    st.info("No position data yet")
+            
+            with col2:
+                fig_coverage = create_exploration_coverage_map(logger, world_size)
+                if fig_coverage:
+                    st.plotly_chart(fig_coverage, use_container_width=True)
+                else:
+                    st.info("No exploration data yet")
+            
+            st.divider()
+            st.subheader("Agent Trajectories")
+            
+            num_agents_available = len(logger.agent_histories)
+            max_agents = st.slider("Number of agents to display", 1, min(num_agents_available, 10), min(5, num_agents_available))
+            
+            fig_traj = create_trajectory_visualization(logger, world_size, max_agents)
+            if fig_traj:
+                st.plotly_chart(fig_traj, use_container_width=True)
+            else:
+                st.info("No trajectory data yet")
+        
+            st.divider()
+            st.subheader("Decision Analysis")
+            
+            fig_decisions = create_decision_heatmap(logger, world_size)
+            if fig_decisions:
+                st.plotly_chart(fig_decisions, use_container_width=True)
+            else:
+                st.info("No decision data yet")
+            
+            st.divider()
+            st.subheader("Performance & Communication")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_efficiency = create_agent_efficiency_comparison(logger)
+                if fig_efficiency:
+                    st.plotly_chart(fig_efficiency, use_container_width=True)
+                else:
+                    st.info("No performance data yet")
+            
+            with col2:
+                fig_network = create_message_flow_network(logger)
+                if fig_network:
+                    st.plotly_chart(fig_network, use_container_width=True)
+                else:
+                    st.info("No message flow data yet")
+            
+            st.divider()
+            st.subheader("Coordination Timeline")
+            
+            fig_timeline = create_coordination_timeline(logger)
+            if fig_timeline:
+                st.plotly_chart(fig_timeline, use_container_width=True)
+            else:
+                st.info("No timeline data yet")
+    
+    else:
+        st.info("Run a simulation to see behavior analysis")
+
+with tab6:
     st.header("Export Data")
     
     col1, col2 = st.columns(2)
